@@ -9,14 +9,15 @@
 
 #nullable enable
 
-using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.Globalization;
-using Flurl.Http;
 using AngleSharp;
 using AngleSharp.Dom;
 using AngleSharp.XPath;
+using Flurl.Http;
 using SmartReader;
+using System.CommandLine;
+using System.CommandLine.Invocation;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 return await InvokeCommandAsync(Args.ToArray());
 
@@ -118,11 +119,9 @@ private async Task UpdateWasLosInFeedAsync(string file)
     if (File.Exists(file))
         existingItems.AddRange(await Feed.ReadItemsAsync(File.ReadAllText(file)));
 
-    var newItemLinks = itemLinks.Where(l => !existingItems.Any(i => i.Link == l)).ToList();
-
     var newItems = new List<FeedItem>();
 
-    foreach (var itemLink in newItemLinks)
+    foreach (var itemLink in itemLinks)
     {
         if (newItems.Count >= ItemLimit)
             break;
@@ -135,7 +134,7 @@ private async Task UpdateWasLosInFeedAsync(string file)
         if (!link.StartsWith(baseUrl))
             link = Flurl.Url.Combine(baseUrl, link);
 
-        if (existingItems.Any(i => i.Link == link))
+        if (existingItems.Any(i => Regex.IsMatch(i.Link ?? string.Empty, Regex.Escape(link) + @"#\d+", RegexOptions.IgnoreCase)))
             continue;
 
         var articleHtml = await link.GetStringAsync();
@@ -163,7 +162,7 @@ private async Task UpdateWasLosInFeedAsync(string file)
 
         var item = new FeedItem()
         {
-            Link = itemLink,
+            Link = link + (article.PublicationDate.HasValue ? "#" + ((DateTimeOffset)article.PublicationDate).ToUnixTimeSeconds() : string.Empty),
             Title = article.Title,
             Description = article.Content,
             Image = !article.Content.Contains(article.FeaturedImage) ? article.FeaturedImage : null,
